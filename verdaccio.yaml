@@ -1,0 +1,27 @@
+storage: ./.verdaccio/storage
+plugins: ./.verdaccio/plugins
+
+web:
+  enable: true
+  title: Verdaccio Local Registry
+
+uplinks:
+  npmjs:
+    url: https://registry.npmjs.org/
+
+packages:
+  "@olddude/*":
+    access: $all
+    publish: $all
+    unpublish: $all
+    proxy: ""
+
+  "**":
+    access: $all
+    proxy: npmjs
+
+server:
+  keepAliveTimeout: 60
+
+log:
+  - { type: stdout, format: pretty, level: debug }

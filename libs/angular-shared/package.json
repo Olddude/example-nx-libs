@@ -1,0 +1,12 @@
+{
+  "name": "@olddude/angular-shared",
+  "version": "0.6.0",
+  "peerDependencies": {
+    "@angular/common": "^20.1.0",
+    "@angular/core": "^20.1.0"
+  },
+  "dependencies": {
+    "tslib": "^2.3.0"
+  },
+  "sideEffects": false
+}
