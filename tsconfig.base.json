@@ -23,9 +23,6 @@
       ],
       "@olddude/angular-auth-shared": [
         "libs/angular-auth-shared/src/index.ts"
-      ],
-      "microfrontend-one/Routes": [
-        "apps/microfrontend-one/src/app/remote-entry/entry.routes.ts"
       ]
     },
     "strict": true,

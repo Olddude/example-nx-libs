@@ -1,0 +1,99 @@
+name: Push Pipeline
+
+on:
+  push:
+    branches: [master]
+
+env:
+  NX_BASE: origin/master~1
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Security Audit
+        run: npm audit || true
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Check Outdated Packages
+        run: npm outdated || true
+
+      - name: Lint Affected
+        run: npm run lint
+
+      - name: Test Affected
+        run: npm run test:ci
+
+      - name: Build Affected
+        run: npm run build
+
+  release:
+    runs-on: ubuntu-22.04
+    needs: build
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          registry-url: "https://npm.pkg.github.com"
+          scope: "@olddude"
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Extract Version Info
+        id: version
+        run: |
+          PROJECT_NAME=$(node -p "require('./package.json').name")
+          PROJECT_VERSION=$(node -p "require('./package.json').version")
+          echo "name=$PROJECT_NAME" >> $GITHUB_OUTPUT
+          echo "version=$PROJECT_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Build
+        run: npm run build
+
+      - name: Publish
+        run: npm run publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create Git Tag
+        run: |
+          git config --local user.email "github-actions@github.com"
+          git config --local user.name "GitHub Actions"
+          git tag -a ${{ steps.version.outputs.version }} -m "Release ${{ steps.version.outputs.version }}" || true
+          git push origin ${{ steps.version.outputs.version }} || true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Release ${{ steps.version.outputs.version }}
+          tag_name: ${{ steps.version.outputs.version }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

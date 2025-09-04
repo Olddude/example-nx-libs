@@ -1,12 +1,10 @@
 {
-  "name": "@olddude/example-nx-project",
-  "version": "0.6.0",
+  "name": "@olddude/example-nx-libs",
+  "version": "0.7.0",
   "license": "MIT",
   "private": true,
   "scripts": {
     "reset": "npx nx reset",
-    "start:shell": "npx nx serve shell",
-    "start:microfrontend-one": "npx nx serve microfrontend-one",
     "build": "npx nx run-many --target=build --all --configuration=development",
     "build:prod": "npx nx run-many --target=build --all --configuration=production",
     "test": "npx nx run-many --target=test --all",
@@ -28,7 +26,7 @@
     "graph": "npx nx graph",
     "verdaccio": "npx verdaccio -c verdaccio.yaml",
     "publish:local": "npx nx run-many --target=publish-local --all",
-    "publish:remote": "npx nx run-many --target=publish --all"
+    "publish": "npx nx run-many --target=publish --all"
   },
   "dependencies": {
     "@angular-builders/custom-webpack": "^20.0.0",
