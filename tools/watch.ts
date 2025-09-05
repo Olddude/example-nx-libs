@@ -15,26 +15,6 @@ function buildDevelop(): void {
   console.info('Build completed');
 }
 
-function publishLocal(): void {
-  try {
-    console.info('Publishing packages to local registry...');
-    execSync('npx nx run-many --target=publish-local --all --parallel --output-style=stream --no-cloud', { 
-      stdio: 'inherit',
-      encoding: 'utf8',
-      timeout: 60000
-    });
-    console.info('All packages published successfully!');
-  } catch (error: Error | unknown) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
-    if (errorMsg.includes('cannot publish over the previously published versions') || 
-        errorMsg.includes('You cannot publish over')) {
-      console.log('Packages already exist at this version, skipping publish');
-    } else {
-      console.error('Publish completed with warnings');
-    }
-  }
-}
-
 function unpublishLocal(): void {
   try {
     console.info('Cleaning up previous packages...');
@@ -60,6 +40,26 @@ function unpublishLocal(): void {
       console.info(`Unpublish command exited with code ${execError.code}`);
     }
     console.info('No previous packages to clean up (this is normal on first run)');
+  }
+}
+
+function publishLocal(): void {
+  try {
+    console.info('Publishing packages to local registry...');
+    execSync('npx nx run-many --target=publish-local --all --parallel --output-style=stream --no-cloud', { 
+      stdio: 'inherit',
+      encoding: 'utf8',
+      timeout: 60000
+    });
+    console.info('All packages published successfully!');
+  } catch (error: Error | unknown) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    if (errorMsg.includes('cannot publish over the previously published versions') || 
+        errorMsg.includes('You cannot publish over')) {
+      console.log('Packages already exist at this version, skipping publish');
+    } else {
+      console.error('Publish completed with warnings');
+    }
   }
 }
 
