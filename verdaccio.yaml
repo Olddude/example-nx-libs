@@ -10,22 +10,12 @@ auth:
     file: ./.verdaccio/htpasswd
     max_users: 1000
 
-uplinks:
-  npmjs:
-    url: https://registry.npmjs.org
-  github:
-    url: https://npm.pkg.github.com
-
 packages:
-  "@olddude/*":
+  "**":
     access: $all
     publish: $all
     unpublish: $all
-    proxy: github
-
-  "**":
-    access: $all
-    proxy: npmjs
+    proxy: ""
 
 server:
   keepAliveTimeout: 60

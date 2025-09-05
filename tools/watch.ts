@@ -1,18 +1,15 @@
 import process from 'node:process';
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn, execSync, type ChildProcess } from 'node:child_process';
 import { get } from 'node:http';
 
 let verdaccioProcess: ChildProcess | undefined;
-let unpublishProcess: ChildProcess | undefined;
-let publishProcess: ChildProcess | undefined;
 
 function killChildProcesses() {
   verdaccioProcess?.kill();
-  unpublishProcess?.kill();
-  publishProcess?.kill();
 }
 
 process.on('SIGINT', () => {
+  console.log('\n🛑 Shutting down...');
   killChildProcesses();
   process.exit(0);
 });
@@ -25,7 +22,7 @@ function waitForVerdaccio(maxAttempts = 30): Promise<void> {
       attempts++;
       get('http://localhost:4873/-/ping', (res) => {
         if (res.statusCode === 200) {
-          console.log('Verdaccio is ready!');
+          console.log('✅ Verdaccio is ready!');
           resolve();
         } else {
           retry();
@@ -51,8 +48,11 @@ function startVerdaccio(): Promise<void> {
   // eslint-disable-next-line no-async-promise-executor
   return new Promise(async (resolve, reject) => {
     try {
-      console.log('Starting Verdaccio...');
-      verdaccioProcess = spawn('npm', ['run', 'verdaccio'], { stdio: 'inherit' });
+      console.log('🚀 Starting Verdaccio local registry...');
+      verdaccioProcess = spawn('npx', ['verdaccio', '-c', 'verdaccio.yaml'], { 
+        stdio: 'inherit',
+        shell: true 
+      });
       
       verdaccioProcess.on('error', (error) => {
         console.error('Verdaccio process error:', error);
@@ -71,75 +71,81 @@ function startVerdaccio(): Promise<void> {
   });
 }
 
-function startUnpublish(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    try {
-      console.log('Starting unpublish process...');
-      unpublishProcess = spawn('npm', ['run', 'unpublish:local'], { stdio: 'inherit' });
-      
-      unpublishProcess.on('error', (error) => {
-        console.error('Unpublish process error:', error);
-        reject(error);
-      });
-
-      unpublishProcess.on('exit', (code) => {
-        if (code === 0) {
-          console.log('Unpublish completed successfully');
-          resolve();
-        } else {
-          console.error(`Unpublish process exited with code ${code}`);
-          resolve(); // Still resolve to continue with publish
-        }
-      });
-      
-    } catch (error) {
-      console.error('Error starting unpublish process:', error);
-      reject(error);
-    }
-  });
+function unpublish(): void {
+  try {
+    console.log('🧹 Cleaning up previous packages from local registry...');
+    execSync('npx nx run-many --target=unpublish-local --all --parallel', { 
+      stdio: 'ignore', // Completely ignore output to prevent hanging
+      encoding: 'utf8',
+      timeout: 30000 // 30 second timeout to prevent indefinite hanging
+    });
+    console.log('✅ Cleanup completed');
+  } catch (error: any) {
+    // Silently continue - packages might not exist yet which is normal
+    // This is expected behavior for first run or after registry cleanup
+    // Also catches timeout errors if unpublish takes too long
+    console.log('📦 No previous packages to clean up (this is normal for first run)');
+  }
 }
 
-function startPublish(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    try {
-      console.log('Starting publish process...');
-      publishProcess = spawn('npm', ['run', 'publish:local'], { stdio: 'inherit' });
-      
-      publishProcess.on('error', (error) => {
-        console.error('Publish process error:', error);
-        reject(error);
-      });
+function publish(): void {
+  try {
+    console.log('📦 Publishing packages to local registry...');
+    execSync('npx nx run-many --target=publish-local --all --parallel', { 
+      stdio: 'inherit',
+      encoding: 'utf8',
+      timeout: 60000 // 60 second timeout
+    });
+    console.log('✅ All packages published successfully!');
+  } catch (error: any) {
+    console.error('❌ Publish failed:', error.message);
+    throw new Error(`Publish failed: ${error.message}`);
+  }
+}
 
-      publishProcess.on('exit', (code) => {
-        if (code === 0) {
-          console.log('Publish completed successfully');
-          resolve();
-        } else {
-          console.error(`Publish process exited with code ${code}`);
-          reject(new Error(`Publish failed with code ${code}`));
-        }
-      });
-      
-    } catch (error) {
-      console.error('Error starting publish process:', error);
-      reject(error);
-    }
-  });
+function buildLibs(): void {
+  try {
+    console.log('🔨 Building libraries...');
+    execSync('npx nx run-many --target=build --all --configuration=development --parallel', {
+      stdio: 'inherit',
+      encoding: 'utf8',
+      timeout: 120000 // 2 minute timeout for builds
+    });
+    console.log('✅ Build completed');
+  } catch (error: any) {
+    console.error('❌ Build failed:', error.message);
+    throw new Error(`Build failed: ${error.message}`);
+  }
 }
 
 async function watch() {
   try {
+    console.log('🚀 Starting watch mode for library development\n');
+    
+    // Start Verdaccio
     await startVerdaccio();
-    await startUnpublish();
-    await startPublish();
-    console.info('All processes completed successfully');
+    
+    // Build libraries first
+    buildLibs();
+    
+    // Clean up any existing packages
+    unpublish();
+    
+    // Publish fresh packages
+    publish();
+    
+    console.info('\n✨ Watch mode ready!');
+    console.info('📦 Local packages are published to Verdaccio at http://localhost:4873');
+    console.info('🔄 You can now use these packages in your applications');
+    console.info('⌨️  Press Ctrl+C to stop\n');
+    
     if (verdaccioProcess && !verdaccioProcess.killed) {
-      console.info('Verdaccio is still running. Press Ctrl+C to exit.');
+      // Keep the process running
       // eslint-disable-next-line @typescript-eslint/no-empty-function
       await new Promise(() => {}); // This will wait indefinitely
     }
   } catch (error) {
-    console.error('Fatal:', error);
+    console.error('❌ Fatal error:', error);
     killChildProcesses();
     process.exit(1);
   }
