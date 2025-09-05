@@ -38,9 +38,6 @@
     },
     "publish": {
       "executor": "nx:run-commands",
-      "dependsOn": [
-        "build"
-      ],
       "options": {
         "command": "npm publish --access public",
         "cwd": "dist/libs/angular-auth-shared"
@@ -48,9 +45,6 @@
     },
     "publish-local": {
       "executor": "nx:run-commands",
-      "dependsOn": [
-        "build"
-      ],
       "options": {
         "command": "npm publish --registry http://localhost:4873",
         "cwd": "dist/libs/angular-auth-shared"
