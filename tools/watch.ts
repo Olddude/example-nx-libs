@@ -1,42 +1,73 @@
 import process from 'node:process';
-import { spawn, execSync, type ChildProcess } from 'node:child_process';
+import { execSync, spawn, type ChildProcess } from 'node:child_process';
 import { get } from 'node:http';
 import { watch } from 'node:fs';
 import { join, relative } from 'node:path';
 import { readdir } from 'node:fs/promises';
 
+function buildDevelop(): void {
+  console.info('Building libraries...');
+  execSync('npx nx run-many --target=build --all --configuration=development --parallel --output-style=stream --no-cloud', {
+    stdio: 'inherit',
+    encoding: 'utf8',
+    timeout: 120000
+  });
+  console.info('Build completed');
+}
+
+function publishLocal(): void {
+  try {
+    console.info('Publishing packages to local registry...');
+    execSync('npx nx run-many --target=publish-local --all --parallel --output-style=stream --no-cloud', { 
+      stdio: 'inherit',
+      encoding: 'utf8',
+      timeout: 60000
+    });
+    console.info('All packages published successfully!');
+  } catch (error: Error | unknown) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    if (errorMsg.includes('cannot publish over the previously published versions') || 
+        errorMsg.includes('You cannot publish over')) {
+      console.log('Packages already exist at this version, skipping publish');
+    } else {
+      console.error('Publish completed with warnings');
+    }
+  }
+}
+
+function unpublishLocal(): void {
+  try {
+    console.info('Cleaning up previous packages...');
+    const output = execSync('npx nx run-many --target=unpublish-local --all --parallel --output-style=stream --no-cloud', {
+      stdio: 'pipe',
+      encoding: 'utf8',
+      timeout: 30000
+    });
+    if (output) {
+      console.info(output);
+    }
+    console.info('Cleanup completed');
+  } catch (error: unknown) {
+    // Log detailed error information
+    const execError = error as { stdout?: string; stderr?: string; code?: number };
+    if (execError.stdout) {
+      console.info('Stdout:', execError.stdout);
+    }
+    if (execError.stderr) {
+      console.info('Stderr:', execError.stderr);
+    }
+    if (execError.code !== undefined && execError.code !== 0) {
+      console.info(`Unpublish command exited with code ${execError.code}`);
+    }
+    console.info('No previous packages to clean up (this is normal on first run)');
+  }
+}
+
 let verdaccioProcess: ChildProcess | undefined;
 let isRebuilding = false;
 let rebuildTimer: NodeJS.Timeout | undefined;
 
-function parseCommandLineArguments() {
-  const args = process.argv.slice(2);
-  let username = '';
-  let password = '';
-  let email = '';
-
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === '--username' && args[i + 1]) {
-      username = args[++i];
-    } else if (args[i] === '--password' && args[i + 1]) {
-      password = args[++i];
-    } else if (args[i] === '--email' && args[i + 1]) {
-      email = args[++i];
-    }
-  }
-
-  if (!username || !password || !email) {
-    console.error('Missing required arguments!');
-    console.error('Usage: node -r ts-node/register watch.ts --username <username> --password <password> --email <email>');
-    process.exit(1);
-  }
-
-  return { username, password, email }; 
-}
-
-const { username, password, email } = parseCommandLineArguments();
-
-const IGNORED_PATTERNS = [
+const ignoredPatterns = [
   'node_modules',
   'dist',
   '.git',
@@ -52,7 +83,7 @@ const IGNORED_PATTERNS = [
 ];
 
 function shouldIgnore(path: string): boolean {
-  return IGNORED_PATTERNS.some(pattern => {
+  return ignoredPatterns.some(pattern => {
     if (pattern.includes('*')) {
       const regex = new RegExp(pattern.replace('*', '.*'));
       return regex.test(path);
@@ -144,7 +175,6 @@ async function startVerdaccio(): Promise<void> {
     }
   });
 
-  // Wait for Verdaccio to be ready
   let attempts = 0;
   const maxAttempts = 30;
   
@@ -162,89 +192,17 @@ async function startVerdaccio(): Promise<void> {
       });
       
       if (isReady) {
-        console.log('✅ Verdaccio is ready!');
+        console.log('Verdaccio is ready!');
         return;
       }
-    } catch (error) {
-      // Continue retrying
+    } catch (error: Error | unknown) {
+      if (error instanceof Error && !error.message.includes('ECONNREFUSED')) {
+        console.error('Error checking Verdaccio status:', error);
+      }
     }
   }
-  
+
   throw new Error('Verdaccio failed to start');
-}
-
-function addUser(): void {
-  try {
-    execSync(`npm adduser --registry http://localhost:4873/ --username ${username} --password ${password} --email ${email}`, {
-      stdio: 'inherit',
-      encoding: 'utf8',
-      timeout: 2000
-    });
-  } catch (error) {
-    console.error('Failed to register user:', error);
-  }
-}
-
-function unpublishLocal(): void {
-  try {
-    console.info('Cleaning up previous packages...');
-    const output = execSync('npx nx run-many --target=unpublish-local --all --parallel --output-style=stream --no-cloud', {
-      stdio: 'pipe',
-      encoding: 'utf8',
-      timeout: 30000
-    });
-    if (output) {
-      console.info(output);
-    }
-    console.info('Cleanup completed');
-  } catch (error: any) {
-    // Log detailed error information
-    if (error.stdout) {
-      console.info('Stdout:', error.stdout);
-    }
-    if (error.stderr) {
-      console.info('Stderr:', error.stderr);
-    }
-    if (error.code !== 0) {
-      console.info(`Unpublish command exited with code ${error.code}`);
-    }
-    console.info('No previous packages to clean up (this is normal on first run)');
-  }
-}
-
-function publishLocal(): void {
-  try {
-    console.info('Publishing packages to local registry...');
-    execSync('npx nx run-many --target=publish-local --all --parallel --output-style=stream --no-cloud', { 
-      stdio: 'inherit',
-      encoding: 'utf8',
-      timeout: 60000
-    });
-    console.info('All packages published successfully!');
-  } catch (error: any) {
-    const errorMsg = error.message || error.toString() || '';
-    if (errorMsg.includes('cannot publish over the previously published versions') || 
-        errorMsg.includes('You cannot publish over')) {
-      console.log('Packages already exist at this version, skipping publish');
-    } else {
-      console.error('Publish completed with warnings');
-    }
-  }
-}
-
-function buildDevelop(): void {
-  try {
-    console.info('Building libraries...');
-    execSync('npx nx run-many --target=build --all --configuration=development --parallel --output-style=stream --no-cloud', {
-      stdio: 'inherit',
-      encoding: 'utf8',
-      timeout: 120000
-    });
-    console.info('Build completed');
-  } catch (error: any) {
-    console.error('Build failed:', error.message);
-    throw new Error(`Build failed: ${error.message}`);
-  }
 }
 
 function rebuildAll(): void {
@@ -271,11 +229,7 @@ function rebuildAll(): void {
 async function start(): Promise<void> {
   try {
     console.info('Starting watch mode for library development\n');
-    console.info(`Username: ${username}`);
-    console.info(`Email: ${email}`);
-
     await startVerdaccio();
-    addUser();
     buildDevelop();
     unpublishLocal();
     publishLocal();
