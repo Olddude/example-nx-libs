@@ -56,6 +56,16 @@
         "cwd": "dist/libs/angular-auth-shared"
       }
     },
+    "unpublish-local": {
+      "executor": "nx:run-commands",
+      "dependsOn": [
+        "build"
+      ],
+      "options": {
+        "command": "npm unpublish --registry http://localhost:4873",
+        "cwd": "dist/libs/angular-auth-shared"
+      }
+    },
     "publish-versioned": {
       "executor": "nx:run-commands",
       "dependsOn": [

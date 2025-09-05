@@ -5,6 +5,11 @@ web:
   enable: true
   title: Verdaccio Local Registry
 
+auth:
+  htpasswd:
+    file: ./.verdaccio/htpasswd
+    max_users: 1000
+
 uplinks:
   npmjs:
     url: https://registry.npmjs.org
