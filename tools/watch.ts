@@ -103,58 +103,47 @@ async function setupFileWatchers(directories: string[]): Promise<void> {
   console.log(`👀 Watching ${watchers.size} directories for changes`);
 }
 
-function waitForVerdaccio(maxAttempts = 30): Promise<void> {
-  return new Promise((resolve, reject) => {
-    let attempts = 0;
-
-    const checkHealth = () => {
-      attempts++;
-      get('http://localhost:4873/-/ping', (res) => {
-        if (res.statusCode === 200) {
-          console.log('✅ Verdaccio is ready!');
-          resolve();
-        } else {
-          retry();
-        }
-      }).on('error', () => {
-        retry();
-      });
-    };
-
-    const retry = () => {
-      if (attempts >= maxAttempts) {
-        reject(new Error('Verdaccio failed to start'));
-      } else {
-        setTimeout(checkHealth, 1000);
-      }
-    };
-
-    setTimeout(checkHealth, 1000);
+async function startVerdaccio(): Promise<void> {
+  console.log('🚀 Starting Verdaccio local registry...');
+  verdaccioProcess = spawn('npx', ['verdaccio', '-c', 'verdaccio.yaml'], { 
+    stdio: 'inherit',
+    shell: true 
   });
-}
+  
+  verdaccioProcess.on('error', (error) => {
+    console.error('Verdaccio process error:', error);
+    if (!error.message.includes('EADDRINUSE')) {
+      throw error;
+    }
+  });
 
-function startVerdaccio(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    console.log('🚀 Starting Verdaccio local registry...');
-    verdaccioProcess = spawn('npx', ['verdaccio', '-c', 'verdaccio.yaml'], { 
-      stdio: 'inherit',
-      shell: true 
-    });
+  // Wait for Verdaccio to be ready
+  let attempts = 0;
+  const maxAttempts = 30;
+  
+  while (attempts < maxAttempts) {
+    attempts++;
+    await new Promise(resolve => setTimeout(resolve, 1000));
     
-    verdaccioProcess.on('error', (error) => {
-      console.error('Verdaccio process error:', error);
-      if (!error.message.includes('EADDRINUSE')) {
-        reject(error);
-      }
-    });
-
-    waitForVerdaccio()
-      .then(() => resolve())
-      .catch((error) => {
-        console.error('Error starting Verdaccio:', error);
-        reject(error);
+    try {
+      const isReady = await new Promise<boolean>((resolve) => {
+        get('http://localhost:4873/-/ping', (res) => {
+          resolve(res.statusCode === 200);
+        }).on('error', () => {
+          resolve(false);
+        });
       });
-  });
+      
+      if (isReady) {
+        console.log('✅ Verdaccio is ready!');
+        return;
+      }
+    } catch (error) {
+      // Continue retrying
+    }
+  }
+  
+  throw new Error('Verdaccio failed to start');
 }
 
 function cleanRegistry(): void {
@@ -170,10 +159,17 @@ function cleanRegistry(): void {
     }
     console.log('✅ Cleanup completed');
   } catch (error: any) {
+    // Log detailed error information
     if (error.stdout) {
-      console.log(error.stdout);
+      console.log('Stdout:', error.stdout);
     }
-    console.log('📦 No previous packages to clean up (this is normal)');
+    if (error.stderr) {
+      console.log('Stderr:', error.stderr);
+    }
+    if (error.code !== 0) {
+      console.log(`⚠️  Unpublish command exited with code ${error.code}`);
+    }
+    console.log('📦 No previous packages to clean up (this is normal on first run)');
   }
 }
 
@@ -246,15 +242,15 @@ async function startWatchMode(): Promise<void> {
     const libsDir = join(process.cwd(), 'libs');
     await setupFileWatchers([libsDir]);
     
-    console.info('\n✨ Watch mode ready!');
-    console.info('📦 Local packages published to http://localhost:4873');
-    console.info('� Watching for file changes in libs/');
-    console.info('🔄 Libraries will auto-rebuild on changes');
-    console.info('⌨️  Press Ctrl+C to stop\n');
+    console.info('Watch mode ready!');
+    console.info('Local packages published to http://localhost:4873');
+    console.info('Watching for file changes in libs/');
+    console.info('Libraries will auto-rebuild on changes');
+    console.info('Press Ctrl+C to stop');
     
     await new Promise(() => undefined);
   } catch (error) {
-    console.error('❌ Fatal error:', error);
+    console.error('Fatal:', error);
     killChildProcesses();
     process.exit(1);
   }

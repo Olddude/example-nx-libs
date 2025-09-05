@@ -46,7 +46,7 @@
     "publish-local": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "npm publish --registry http://localhost:4873",
+        "command": "npm publish --registry http://localhost:4873 --force",
         "cwd": "dist/libs/angular-shared"
       }
     },
@@ -56,7 +56,7 @@
         "build"
       ],
       "options": {
-        "command": "npm unpublish --registry http://localhost:4873",
+        "command": "npm unpublish --registry http://localhost:4873 --force",
         "cwd": "dist/libs/angular-shared"
       }
     },
