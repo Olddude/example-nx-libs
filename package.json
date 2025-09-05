@@ -29,7 +29,7 @@
     "publish:local": "npx nx run-many --target=publish-local --all",
     "publish": "npx nx run-many --target=publish --all",
     "unpublish:local": "npx nx run-many --target=unpublish-local --all",
-    "watch": "ts-node ./tools/watch.ts"
+    "watch": "node -r ts-node/register ./tools/watch.ts"
   },
   "dependencies": {
     "@angular-builders/custom-webpack": "^20.0.0",
