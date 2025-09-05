@@ -1,18 +1,107 @@
 import process from 'node:process';
 import { spawn, execSync, type ChildProcess } from 'node:child_process';
 import { get } from 'node:http';
+import { watch } from 'node:fs';
+import { join, relative } from 'node:path';
+import { readdir } from 'node:fs/promises';
 
 let verdaccioProcess: ChildProcess | undefined;
+let isRebuilding = false;
+let rebuildTimer: NodeJS.Timeout | undefined;
 
-function killChildProcesses() {
+const IGNORED_PATTERNS = [
+  'node_modules',
+  'dist',
+  '.git',
+  '.nx',
+  'tmp',
+  '.angular',
+  '.cache',
+  '*.spec.ts',
+  '*.spec.js',
+  '*.test.ts',
+  '*.test.js',
+  '.DS_Store'
+];
+
+function shouldIgnore(path: string): boolean {
+  return IGNORED_PATTERNS.some(pattern => {
+    if (pattern.includes('*')) {
+      const regex = new RegExp(pattern.replace('*', '.*'));
+      return regex.test(path);
+    }
+    return path.includes(pattern);
+  });
+}
+
+function formatTime(): string {
+  return new Date().toLocaleTimeString('en-US', { 
+    hour12: false, 
+    hour: '2-digit', 
+    minute: '2-digit', 
+    second: '2-digit' 
+  });
+}
+
+function logChange(filepath: string): void {
+  const relativePath = relative(process.cwd(), filepath);
+  console.log(`\n[${formatTime()}] 📝 File changed: ${relativePath}`);
+}
+
+function killChildProcesses(): void {
   verdaccioProcess?.kill();
 }
 
-process.on('SIGINT', () => {
-  console.log('\n🛑 Shutting down...');
-  killChildProcesses();
-  process.exit(0);
-});
+function debounce(func: () => void, delay: number): void {
+  if (rebuildTimer) {
+    clearTimeout(rebuildTimer);
+  }
+  rebuildTimer = setTimeout(func, delay);
+}
+
+async function setupFileWatchers(directories: string[]): Promise<void> {
+  const watchers: Set<string> = new Set();
+
+  async function watchDirectory(dir: string): Promise<void> {
+    if (watchers.has(dir) || shouldIgnore(dir)) {
+      return;
+    }
+
+    watchers.add(dir);
+    
+    watch(dir, { recursive: false }, (eventType, filename) => {
+      if (!filename || shouldIgnore(filename)) {
+        return;
+      }
+
+      const fullPath = join(dir, filename);
+      logChange(fullPath);
+      
+      debounce(() => {
+        if (!isRebuilding) {
+          rebuild();
+        }
+      }, 1000);
+    });
+
+    try {
+      const entries = await readdir(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isDirectory() && !shouldIgnore(entry.name)) {
+          await watchDirectory(join(dir, entry.name));
+        }
+      }
+    } catch (error) {
+      console.error(`Failed to watch directory ${dir}:`, error);
+    }
+  }
+
+  for (const dir of directories) {
+    await watchDirectory(dir);
+  }
+
+  console.log(`👀 Watching ${watchers.size} directories for changes`);
+}
 
 function waitForVerdaccio(maxAttempts = 30): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -45,56 +134,50 @@ function waitForVerdaccio(maxAttempts = 30): Promise<void> {
 }
 
 function startVerdaccio(): Promise<void> {
-  // eslint-disable-next-line no-async-promise-executor
-  return new Promise(async (resolve, reject) => {
-    try {
-      console.log('🚀 Starting Verdaccio local registry...');
-      verdaccioProcess = spawn('npx', ['verdaccio', '-c', 'verdaccio.yaml'], { 
-        stdio: 'inherit',
-        shell: true 
-      });
-      
-      verdaccioProcess.on('error', (error) => {
-        console.error('Verdaccio process error:', error);
-        if (!error.message.includes('EADDRINUSE')) {
-          reject(error);
-        }
-      });
+  return new Promise((resolve, reject) => {
+    console.log('🚀 Starting Verdaccio local registry...');
+    verdaccioProcess = spawn('npx', ['verdaccio', '-c', 'verdaccio.yaml'], { 
+      stdio: 'inherit',
+      shell: true 
+    });
+    
+    verdaccioProcess.on('error', (error) => {
+      console.error('Verdaccio process error:', error);
+      if (!error.message.includes('EADDRINUSE')) {
+        reject(error);
+      }
+    });
 
-      await waitForVerdaccio();
-      resolve();
-      
-    } catch (error) {
-      console.error('Error starting Verdaccio:', error);
-      reject(error);
-    }
+    waitForVerdaccio()
+      .then(() => resolve())
+      .catch((error) => {
+        console.error('Error starting Verdaccio:', error);
+        reject(error);
+      });
   });
 }
 
-function unpublish(): void {
+function cleanRegistry(): void {
   try {
-    console.log('🧹 Cleaning up previous packages from local registry...');
+    console.log('🧹 Cleaning up previous packages...');
     execSync('npx nx run-many --target=unpublish-local --all --parallel', { 
-      stdio: 'ignore', // Completely ignore output to prevent hanging
+      stdio: 'ignore',
       encoding: 'utf8',
-      timeout: 30000 // 30 second timeout to prevent indefinite hanging
+      timeout: 30000
     });
     console.log('✅ Cleanup completed');
-  } catch (error: any) {
-    // Silently continue - packages might not exist yet which is normal
-    // This is expected behavior for first run or after registry cleanup
-    // Also catches timeout errors if unpublish takes too long
-    console.log('📦 No previous packages to clean up (this is normal for first run)');
+  } catch {
+    console.log('📦 No previous packages to clean up');
   }
 }
 
-function publish(): void {
+function publishPackages(): void {
   try {
     console.log('📦 Publishing packages to local registry...');
     execSync('npx nx run-many --target=publish-local --all --parallel', { 
       stdio: 'inherit',
       encoding: 'utf8',
-      timeout: 60000 // 60 second timeout
+      timeout: 60000
     });
     console.log('✅ All packages published successfully!');
   } catch (error: any) {
@@ -103,13 +186,13 @@ function publish(): void {
   }
 }
 
-function buildLibs(): void {
+function buildLibraries(): void {
   try {
     console.log('🔨 Building libraries...');
     execSync('npx nx run-many --target=build --all --configuration=development --parallel', {
       stdio: 'inherit',
       encoding: 'utf8',
-      timeout: 120000 // 2 minute timeout for builds
+      timeout: 120000
     });
     console.log('✅ Build completed');
   } catch (error: any) {
@@ -118,32 +201,47 @@ function buildLibs(): void {
   }
 }
 
-async function watch() {
+function rebuild(): void {
+  if (isRebuilding) {
+    console.log('⏳ Rebuild already in progress...');
+    return;
+  }
+
+  isRebuilding = true;
+  console.log(`\n[${formatTime()}] 🔄 Rebuilding and republishing...`);
+
+  try {
+    buildLibraries();
+    cleanRegistry();
+    publishPackages();
+    console.log(`[${formatTime()}] ✨ Rebuild complete!\n`);
+  } catch (error) {
+    console.error(`[${formatTime()}] ❌ Rebuild failed:`, error);
+  } finally {
+    isRebuilding = false;
+  }
+}
+
+async function startWatchMode(): Promise<void> {
   try {
     console.log('🚀 Starting watch mode for library development\n');
     
-    // Start Verdaccio
     await startVerdaccio();
     
-    // Build libraries first
-    buildLibs();
+    buildLibraries();
+    cleanRegistry();
+    publishPackages();
     
-    // Clean up any existing packages
-    unpublish();
-    
-    // Publish fresh packages
-    publish();
+    const libsDir = join(process.cwd(), 'libs');
+    await setupFileWatchers([libsDir]);
     
     console.info('\n✨ Watch mode ready!');
-    console.info('📦 Local packages are published to Verdaccio at http://localhost:4873');
-    console.info('🔄 You can now use these packages in your applications');
+    console.info('📦 Local packages published to http://localhost:4873');
+    console.info('� Watching for file changes in libs/');
+    console.info('🔄 Libraries will auto-rebuild on changes');
     console.info('⌨️  Press Ctrl+C to stop\n');
     
-    if (verdaccioProcess && !verdaccioProcess.killed) {
-      // Keep the process running
-      // eslint-disable-next-line @typescript-eslint/no-empty-function
-      await new Promise(() => {}); // This will wait indefinitely
-    }
+    await new Promise(() => undefined);
   } catch (error) {
     console.error('❌ Fatal error:', error);
     killChildProcesses();
@@ -151,4 +249,10 @@ async function watch() {
   }
 }
 
-watch();
+process.on('SIGINT', () => {
+  console.log('\n🛑 Shutting down...');
+  killChildProcesses();
+  process.exit(0);
+});
+
+startWatchMode();
