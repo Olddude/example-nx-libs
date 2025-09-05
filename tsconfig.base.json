@@ -10,30 +10,18 @@
     "importHelpers": true,
     "target": "es2022",
     "module": "esnext",
-    "lib": [
-      "es2022",
-      "dom"
-    ],
-    "types": [
-      "node"
-    ],
+    "lib": ["es2022", "dom"],
+    "types": ["node", "./types.d.ts"],
     "skipLibCheck": true,
     "skipDefaultLibCheck": true,
     "baseUrl": ".",
     "paths": {
-      "@olddude/angular-shared": [
-        "libs/angular-shared/src/index.ts"
-      ],
-      "@olddude/angular-auth-shared": [
-        "libs/angular-auth-shared/src/index.ts"
-      ]
+      "@olddude/angular-shared": ["libs/angular-shared/src/index.ts"],
+      "@olddude/angular-auth-shared": ["libs/angular-auth-shared/src/index.ts"]
     },
     "strict": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true
   },
-  "exclude": [
-    "node_modules",
-    "tmp"
-  ]
+  "exclude": ["node_modules", "tmp"]
 }
