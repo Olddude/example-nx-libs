@@ -18,28 +18,20 @@ function buildDevelop(): void {
 function unpublishLocal(): void {
   try {
     console.info('Cleaning up previous packages...');
-    const output = execSync('npx nx run-many --target=unpublish-local --all --parallel --output-style=stream --no-cloud', {
-      stdio: 'pipe',
+    execSync('npx nx run-many --target=unpublish-local --all --parallel --output-style=stream --no-cloud', {
+      stdio: 'inherit',
       encoding: 'utf8',
       timeout: 30000
     });
-    if (output) {
-      console.info(output);
+    console.info('All packages unpublished successfully!');
+  } catch (error: Error | unknown) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    if (errorMsg.includes('404 Not Found') || 
+        errorMsg.includes('No matching version found for')) {
+      console.log('No previously published packages found, skipping unpublish');
+    } else {
+      console.error('Unpublish completed with warnings');
     }
-    console.info('Cleanup completed');
-  } catch (error: unknown) {
-    // Log detailed error information
-    const execError = error as { stdout?: string; stderr?: string; code?: number };
-    if (execError.stdout) {
-      console.info('Stdout:', execError.stdout);
-    }
-    if (execError.stderr) {
-      console.info('Stderr:', execError.stderr);
-    }
-    if (execError.code !== undefined && execError.code !== 0) {
-      console.info(`Unpublish command exited with code ${execError.code}`);
-    }
-    console.info('No previous packages to clean up (this is normal on first run)');
   }
 }
 
