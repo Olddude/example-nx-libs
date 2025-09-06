@@ -68,18 +68,18 @@ let isRebuilding = false;
 let rebuildTimer: NodeJS.Timeout | undefined;
 
 const ignoredPatterns = [
-  'node_modules',
-  'dist',
   '.git',
-  '.nx',
-  'tmp',
   '.angular',
   '.cache',
+  '.nx',
+  '.verdaccio',
+  'dist',
+  'node_modules',
+  'tmp',
   '*.spec.ts',
   '*.spec.js',
   '*.test.ts',
-  '*.test.js',
-  '.DS_Store'
+  '*.test.js'
 ];
 
 function shouldIgnore(path: string): boolean {
