@@ -14,7 +14,7 @@
       "cache": true,
       "executor": "@angular-devkit/build-angular:browser",
       "options": {
-        "outputPath": "dist/{projectRoot}",
+        "outputPath": "dist/{projectName}",
         "progress": true,
         "extractLicenses": false,
         "buildOptimizer": false,
@@ -30,25 +30,15 @@
           "sourceMap": false,
           "namedChunks": false,
           "extractLicenses": true,
-          "vendorChunk": false,
-          "fileReplacements": [
-            {
-              "replace": "apps/{projectName}/src/environments/environment.ts",
-              "with": "apps/{projectName}/src/environments/environment.prod.ts"
-            }
-          ]
-        }
-      }
-    },
-    "serve": {
-      "executor": "@nx/angular:module-federation-dev-server",
-      "options": {
-        "browserTarget": "{projectName}:build",
-        "port": 4200
-      },
-      "configurations": {
-        "production": {
-          "browserTarget": "{projectName}:build:production"
+          "vendorChunk": false
+        },
+        "development": {
+          "buildOptimizer": false,
+          "optimization": false,
+          "sourceMap": true,
+          "namedChunks": true,
+          "extractLicenses": false,
+          "vendorChunk": true
         }
       }
     },
@@ -83,24 +73,6 @@
           "ci": true,
           "codeCoverage": true,
           "silent": true
-        }
-      }
-    },
-    "e2e": {
-      "executor": "@nx/cypress:cypress",
-      "inputs": [
-        "default",
-        "^production"
-      ],
-      "cache": true,
-      "options": {
-        "cypressConfig": "{projectRoot}/cypress.config.ts",
-        "testingType": "e2e",
-        "devServerTarget": "{projectName}:serve"
-      },
-      "configurations": {
-        "production": {
-          "devServerTarget": "{projectName}:serve:production"
         }
       }
     },
@@ -149,7 +121,6 @@
   },
   "generators": {
     "@nx/angular:application": {
-      "e2eTestRunner": "cypress",
       "linter": "eslint",
       "style": "scss",
       "unitTestRunner": "jest"
@@ -172,22 +143,12 @@
           "build",
           "lint",
           "test",
-          "e2e",
           "server"
         ]
       }
     }
   },
   "plugins": [
-    {
-      "plugin": "@nx/cypress/plugin",
-      "options": {
-        "targetName": "e2e",
-        "openTargetName": "open-cypress",
-        "componentTestingTargetName": "component-test",
-        "ciTargetName": "e2e-ci"
-      }
-    },
     {
       "plugin": "@nx/eslint/plugin",
       "options": {
