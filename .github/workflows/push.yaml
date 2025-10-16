@@ -75,7 +75,7 @@ jobs:
           echo "version=$PROJECT_VERSION" >> $GITHUB_OUTPUT
 
       - name: Build
-        run: npm run affected:build
+        run: npm run affected:build:prod
 
       - name: Publish
         run: npm run affected:publish
