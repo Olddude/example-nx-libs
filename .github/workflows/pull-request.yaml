@@ -34,10 +34,10 @@ jobs:
         run: npm outdated || true
 
       - name: Lint Affected
-        run: npm run lint
+        run: npm run affected:lint
 
       - name: Test Affected
-        run: npm run test
+        run: npm run affected:test
 
       - name: Build Affected
-        run: npm run build
+        run: npm run affected:build
