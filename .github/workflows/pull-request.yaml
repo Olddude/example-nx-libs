@@ -37,7 +37,7 @@ jobs:
         run: npm run lint
 
       - name: Test Affected
-        run: npm run test:ci
+        run: npm run test
 
       - name: Build Affected
         run: npm run build
