@@ -4,6 +4,7 @@
   "license": "MIT",
   "private": true,
   "scripts": {
+    "prepare": "npx husky",
     "reset": "npx nx reset",
     "build": "npx nx run-many --target=build --configuration=development",
     "build:prod": "npx nx run-many --target=build --configuration=production",
@@ -67,6 +68,7 @@
     "angular-eslint": "^20.2.0",
     "eslint": "^9.8.0",
     "eslint-config-prettier": "^10.0.0",
+    "husky": "^9.1.7",
     "jest": "^29.7.0",
     "jest-environment-jsdom": "^29.7.0",
     "jest-preset-angular": "~14.6.1",
