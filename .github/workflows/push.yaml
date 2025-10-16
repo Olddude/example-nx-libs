@@ -19,16 +19,18 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Configure GitHub Package Registry
-        run: |
-          echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> ~/.npmrc
-          npm config set @olddude:registry https://npm.pkg.github.com
-
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
           cache: npm
+          registry-url: "https://npm.pkg.github.com"
+
+      - name: Configure GitHub Package Registry
+        run: |
+          echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" > $HOME/.npmrc
+          echo "@olddude:registry=https://npm.pkg.github.com" >> $HOME/.npmrc
+          echo "registry=https://registry.npmjs.org" >> $HOME/.npmrc
 
       - name: Security Audit
         run: npm audit || true
@@ -62,18 +64,18 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Configure GitHub Package Registry
-        run: |
-          echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> ~/.npmrc
-          npm config set @olddude:registry https://npm.pkg.github.com
-
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
           cache: npm
           registry-url: "https://npm.pkg.github.com"
-          scope: "@olddude"
+
+      - name: Configure GitHub Package Registry
+        run: |
+          echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" > $HOME/.npmrc
+          echo "@olddude:registry=https://npm.pkg.github.com" >> $HOME/.npmrc
+          echo "registry=https://registry.npmjs.org" >> $HOME/.npmrc
 
       - name: Install Dependencies
         run: npm ci
@@ -90,6 +92,10 @@ jobs:
 
       - name: Build
         run: npm run affected:build:prod
+
+      - name: Copy npmrc to dist directories
+        run: |
+          find dist/libs -type d -name "angular-*" -exec cp $HOME/.npmrc {}/ \;
 
       - name: Publish
         run: npm run affected:publish
