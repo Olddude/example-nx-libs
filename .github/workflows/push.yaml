@@ -35,13 +35,13 @@ jobs:
         run: npm outdated || true
 
       - name: Lint Affected
-        run: npm run lint
+        run: npm run affected:lint
 
       - name: Test Affected
-        run: npm run test
+        run: npm run affected:test
 
       - name: Build Affected
-        run: npm run build
+        run: npm run affected:build
 
   release:
     runs-on: ubuntu-22.04
@@ -75,10 +75,10 @@ jobs:
           echo "version=$PROJECT_VERSION" >> $GITHUB_OUTPUT
 
       - name: Build
-        run: npm run build
+        run: npm run affected:build
 
       - name: Publish
-        run: npm run publish
+        run: npm run affected:publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
