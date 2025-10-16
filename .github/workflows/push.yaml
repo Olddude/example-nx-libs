@@ -25,20 +25,13 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
           registry-url: "https://npm.pkg.github.com"
-
-      - name: Configure GitHub Package Registry
-        run: |
-          echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" > $HOME/.npmrc
-          echo "@olddude:registry=https://npm.pkg.github.com" >> $HOME/.npmrc
-          echo "registry=https://registry.npmjs.org" >> $HOME/.npmrc
+          scope: "@olddude"
 
       - name: Security Audit
         run: npm audit || true
 
       - name: Install Dependencies
         run: npm ci
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Check Outdated Packages
         run: npm outdated || true
@@ -70,17 +63,10 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
           registry-url: "https://npm.pkg.github.com"
-
-      - name: Configure GitHub Package Registry
-        run: |
-          echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" > $HOME/.npmrc
-          echo "@olddude:registry=https://npm.pkg.github.com" >> $HOME/.npmrc
-          echo "registry=https://registry.npmjs.org" >> $HOME/.npmrc
+          scope: "@olddude"
 
       - name: Install Dependencies
         run: npm ci
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Extract Version Info
         id: version
@@ -92,10 +78,6 @@ jobs:
 
       - name: Build
         run: npm run affected:build:prod
-
-      - name: Copy npmrc to dist directories
-        run: |
-          find dist/libs -type d -name "angular-*" -exec cp $HOME/.npmrc {}/ \;
 
       - name: Publish
         run: npm run affected:publish
