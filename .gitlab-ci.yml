@@ -1,0 +1,215 @@
+default:
+  image: node:22
+  before_script:
+    - node --version
+    - npm --version
+
+variables:
+  npm_config_cache: "$CI_PROJECT_DIR/.npm"
+  CYPRESS_CACHE_FOLDER: "$CI_PROJECT_DIR/.cache/Cypress"
+
+cache:
+  key:
+    files:
+      - package-lock.json
+  paths:
+    - .npm
+    - .cache/Cypress
+    - node_modules
+
+stages:
+  - audit
+  - install
+  - validate
+  - build
+  - release
+
+# Security Audit
+security-audit:
+  stage: audit
+  script:
+    - npm audit || true
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# Check Outdated Packages
+check-outdated:
+  stage: audit
+  script:
+    - npm outdated || true
+  allow_failure: true
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# Install Dependencies
+install-dependencies:
+  stage: install
+  script:
+    - npm ci
+  artifacts:
+    paths:
+      - node_modules
+    expire_in: 1 hour
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# Lint Affected (Pull Request)
+lint-affected-mr:
+  stage: validate
+  needs:
+    - install-dependencies
+  script:
+    - git fetch origin $CI_MERGE_REQUEST_TARGET_BRANCH_NAME
+    - export NX_BASE=origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME
+    - npm run affected:lint
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+# Test Affected (Pull Request)
+test-affected-mr:
+  stage: validate
+  needs:
+    - install-dependencies
+  script:
+    - git fetch origin $CI_MERGE_REQUEST_TARGET_BRANCH_NAME
+    - export NX_BASE=origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME
+    - npm run affected:test
+  coverage: '/Statements\s*:\s*([0-9.]+)%/'
+  artifacts:
+    when: always
+    reports:
+      junit:
+        - coverage/**/junit.xml
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage/**/cobertura-coverage.xml
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+# Build Affected (Pull Request)
+build-affected-mr:
+  stage: build
+  needs:
+    - install-dependencies
+  script:
+    - git fetch origin $CI_MERGE_REQUEST_TARGET_BRANCH_NAME
+    - export NX_BASE=origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME
+    - npm run affected:build
+  artifacts:
+    paths:
+      - tmp/libs/*/build
+    expire_in: 1 day
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+# Lint Affected (Push to master)
+lint-affected-push:
+  stage: validate
+  needs:
+    - install-dependencies
+  script:
+    - export NX_BASE=origin/$CI_DEFAULT_BRANCH~1
+    - npm run affected:lint
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# Test Affected (Push to master)
+test-affected-push:
+  stage: validate
+  needs:
+    - install-dependencies
+  script:
+    - export NX_BASE=origin/$CI_DEFAULT_BRANCH~1
+    - npm run affected:test
+  coverage: '/Statements\s*:\s*([0-9.]+)%/'
+  artifacts:
+    when: always
+    reports:
+      junit:
+        - coverage/**/junit.xml
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage/**/cobertura-coverage.xml
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# Build Affected (Push to master)
+build-affected-push:
+  stage: build
+  needs:
+    - install-dependencies
+  script:
+    - export NX_BASE=origin/$CI_DEFAULT_BRANCH~1
+    - npm run affected:build
+  artifacts:
+    paths:
+      - tmp/libs/*/build
+    expire_in: 1 day
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# Build Production (Push to master)
+build-production:
+  stage: build
+  needs:
+    - lint-affected-push
+    - test-affected-push
+    - build-affected-push
+  script:
+    - npm run affected:build:prod
+  artifacts:
+    paths:
+      - tmp/libs/*/build
+    expire_in: 1 week
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# Publish Packages (Push to master)
+publish-packages:
+  stage: release
+  needs:
+    - build-production
+  before_script:
+    - |
+      cat > .npmrc << EOF
+      @olddude:registry=https://gitlab.com/api/v4/projects/${CI_PROJECT_ID}/packages/npm/
+      //gitlab.com/api/v4/projects/${CI_PROJECT_ID}/packages/npm/:_authToken=${CI_JOB_TOKEN}
+      EOF
+    - npm whoami
+  script:
+    - npm run affected:publish
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# Create Release (Push to master)
+create-release:
+  stage: release
+  needs:
+    - publish-packages
+  before_script:
+    - apt-get update && apt-get install -y jq
+  script:
+    - |
+      PROJECT_NAME=$(node -p "require('./package.json').name")
+      PROJECT_VERSION=$(node -p "require('./package.json').version")
+      echo "Creating release for $PROJECT_NAME version $PROJECT_VERSION"
+
+      # Create Git Tag
+      git config --global user.email "gitlab-ci@gitlab.com"
+      git config --global user.name "GitLab CI"
+      git remote set-url origin https://oauth2:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git
+      git tag -a $PROJECT_VERSION -m "Release $PROJECT_VERSION" || true
+      git push origin $PROJECT_VERSION || true
+
+      # Create GitLab Release
+      curl --request POST \
+        --header "PRIVATE-TOKEN: ${CI_JOB_TOKEN}" \
+        --data tag_name="$PROJECT_VERSION" \
+        --data name="Release $PROJECT_VERSION" \
+        --data description="Release $PROJECT_VERSION - Auto-generated by GitLab CI" \
+        "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/releases"
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
